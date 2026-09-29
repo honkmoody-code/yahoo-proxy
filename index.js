@@ -1,78 +1,58 @@
+
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-
-const HEADERS = {
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-  }
-};
-
-// Pobieranie danych CSV z Yahoo Finance
-app.get('/csv/:symbol', async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    // Domyślnie p
-    const yahooUrl =obieramy ostatnie 365 dni
-    const now = Math.floor(Date.now() / 1000);
-    const oneYearAgo = now - 365 * 24 * 60 * 60;
- `https://query1.finance.yahoo.com/v7/finance/download/${encodeURIComponent(symbol)}?period1=${oneYearAgo}&period2=${now}&interval=1d&events=history`;
-
-    const response = await axios.get(yahooUrl, HEADERS);
-
-    res.setHeader('Content-Type', 'text/csv');
-    return res.send(response.data);
-  } catch (error) {
-    return res.status(500).send('Błąd pobierania danych z Yahoo Finance: ' + error.message);
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Serwer działa na porcie ${PORT}`);
-});
-const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
+const yahooFinance = require('yahoo-finance2').default;
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 
-const HEADERS = {
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-  }
-};
+// Testowy endpoint główny, żeby sprawdzić czy serwer żyje
+app.get('/', (req, res) => {
+  res.send('Serwer Yahoo Proxy działa poprawnie!');
+});
 
-// Endpoint pobierający dane od samego początku do dziś
+// Endpoint pobierający pełną historię
 app.get('/csv/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    
-    // period1 = 0 oznacza początek historii dostępnej na Yahoo Finance (od ok. 1970 r.)
-    const period1 = 0; 
-    // period2 = aktualny czas Unix
-    const period2 = Math.floor(Date.now() / 1000); 
 
-    const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/download/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=history&includeAdjustedClose=true`;
+    // Pobieramy dane historyczne od początku (1970-01-01) do dzisiaj
+    const queryOptions = {
+      period1: '1970-01-01',
+      interval: '1d'
+    };
 
-    const response = await axios.get(yahooUrl, HEADERS);
+    const result = await yahooFinance.historical(symbol, queryOptions);
+
+    if (!result || result.length === 0) {
+      return res.status(404).send('Brak danych dla podanego symbolu.');
+    }
+
+    // Konwersja tablicy obiektów JSON na format CSV
+    const headers = 'Date,Open,High,Low,Close,Adj Close,Volume\n';
+    const csvRows = result.map(row => {
+      const date = new Date(row.date).toISOString().split('T')[0];
+      const open = row.open ?? '';
+      const high = row.high ?? '';
+      const low = row.low ?? '';
+      const close = row.close ?? '';
+      const adjClose = row.adjClose ?? row.close ?? '';
+      const volume = row.volume ?? 0;
+      return `${date},${open},${high},${low},${close},${adjClose},${volume}`;
+    }).join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="${symbol}_max.csv"`);
-    return res.send(response.data);
+    res.setHeader('Content-Disposition', `attachment; filename="${symbol}.csv"`);
+    return res.send(headers + csvRows);
+
   } catch (error) {
-    console.error('Błąd:', error.message);
-    return res.status(500).send('Błąd pobierania danych z Yahoo Finance: ' + error.message);
+    console.error('Błąd:', error);
+    return res.status(500).send('Błąd serwera: ' + error.message);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Serwer działa na porcie ${PORT}`);
+  console.log(`Serwer uruchomiony na porcie ${PORT}`);
 });
